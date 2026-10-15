@@ -9,7 +9,8 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from codex_history_viewer.exporter import export_one
+from codex_history_viewer.exporter import export_migration_bundle, export_one
+from codex_history_viewer.importer import import_archives
 from codex_history_viewer.reader import scan_codex_home, load_session_events
 
 
@@ -217,6 +218,70 @@ class HistoryTests(unittest.TestCase):
         txt_result = export_one(session, catalog, str(self.out), ["txt"], "chat", False, False, threading.Event())
         self.assertIn("[附件] attachments/", (Path(txt_result["folder"]) / "聊天记录.txt").read_text(encoding="utf-8"))
         self.assertFalse(any(path.name == "private.txt" for path in Path(result["folder"]).rglob("*")))
+
+    def test_migration_bundle_import_is_visible_and_keeps_attachments(self) -> None:
+        sid = "77777777-7777-4777-8777-777777777777"
+        attachment_dir = self.root / "attachments" / sid
+        attachment_dir.mkdir(parents=True)
+        attachment = attachment_dir / "reference.txt"
+        attachment.write_text("迁移后仍可读取的附件", encoding="utf-8")
+
+        session_dir = self.root / "sessions" / "2026" / "04" / "01"
+        session_dir.mkdir(parents=True)
+        raw = session_dir / f"rollout-2026-04-01T00-00-00-{sid}.jsonl"
+        user = {
+            "type": "message",
+            "id": "user-1",
+            "role": "user",
+            "content": [
+                {"type": "input_text", "text": "请查看这个附件"},
+                {"type": "input_image", "image_url": str(attachment)},
+            ],
+        }
+        assistant = {
+            "type": "message",
+            "id": "assistant-1",
+            "role": "assistant",
+            "phase": "final_answer",
+            "content": [{"type": "output_text", "text": "这是可跨电脑查看的测试会话"}],
+        }
+        raw.write_text(
+            dump_line(envelope("session_meta", {"session_id": sid, "timestamp": "2026-04-01T00:00:00Z"}, 0))
+            + dump_line(envelope("response_item", user, 1))
+            + dump_line(envelope("response_item", assistant, 2)),
+            encoding="utf-8",
+        )
+
+        catalog = scan_codex_home(str(self.root))
+        self.addCleanup(lambda: __import__("shutil").rmtree(catalog.temp_dir, ignore_errors=True))
+        source_session = next(item for item in catalog.sessions if item.session_id == sid)
+        bundle_path = self.out / "cross-computer-migration.zip"
+        exported = export_migration_bundle([source_session], catalog, str(bundle_path), threading.Event())
+        self.assertEqual(exported["exported"], 1)
+        self.assertTrue(bundle_path.is_file())
+        with zipfile.ZipFile(bundle_path) as bundle:
+            self.assertIsNone(bundle.testzip())
+
+        import_root = Path(self.temp.name) / "destination-computer" / "imports"
+        imported_result = import_archives([str(bundle_path)], str(import_root))
+        self.assertEqual(imported_result["imported"], 1)
+        self.assertEqual(imported_result["failed"], 0)
+        self.assertEqual(len(imported_result["sessions"]), 1)
+
+        imported_session = imported_result["sessions"][0]
+        self.assertEqual(imported_session.session_id, sid)
+        self.assertEqual(imported_session.source, "导入 ZIP")
+        self.assertIn("这是可跨电脑查看的测试会话", imported_session.search_text)
+        events, issues, _ = load_session_events(imported_session, catalog)
+        self.assertFalse(issues)
+        user_event = next(event for event in events if event.get("role") == "user")
+        imported_attachment = Path(user_event["attachments"][0]["ref"])
+        self.assertEqual(imported_attachment.read_text(encoding="utf-8"), "迁移后仍可读取的附件")
+
+        duplicate_result = import_archives([str(bundle_path)], str(import_root), {sid})
+        self.assertEqual(duplicate_result["imported"], 0)
+        self.assertEqual(duplicate_result["skipped"], 1)
+        self.assertEqual(duplicate_result["failed"], 0)
 
 
 if __name__ == "__main__":
