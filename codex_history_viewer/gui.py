@@ -343,6 +343,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Codex 历史记录浏览与导出")
         self.resize(1440, 860)
         self.setMinimumSize(1120, 680)
+        self.setAcceptDrops(True)
         self.settings = QSettings("Local Codex Tools", "CodexHistoryViewer")
         self.catalog: Catalog | None = None
         self.sessions_by_id: dict[str, SessionInfo] = {}
@@ -429,6 +430,7 @@ class MainWindow(QMainWindow):
         self.clear_selection_button = QPushButton("清除选择")
         self.preview_button = QPushButton("预览")
         self.import_button = QPushButton("导入 ZIP")
+        self.import_button.setToolTip("选择迁移 ZIP 导入；也可以把 ZIP 文件拖到程序窗口")
         self.migration_export_button = QPushButton("导出全部迁移包")
         self.export_button = QPushButton("导出所选")
         self.export_button.setObjectName("primaryAction")
@@ -535,6 +537,9 @@ class MainWindow(QMainWindow):
         footer.addWidget(self.help_button)
         root_layout.addLayout(footer)
         self.statusBar().showMessage(f"版本 {APP_VERSION} · 数据仅在本机处理")
+
+        for child in self.findChildren(QWidget):
+            child.setAcceptDrops(False)
 
         self.apply_filters()
         self.start_scan()
@@ -915,7 +920,39 @@ class MainWindow(QMainWindow):
             os.path.expanduser("~"),
             "ZIP 会话包或迁移包 (*.zip);;所有文件 (*)",
         )
+        self._start_import_paths(archive_paths)
+
+    def dragEnterEvent(self, event) -> None:
+        if event.mimeData().hasUrls() and any(
+            url.isLocalFile() and url.toLocalFile().casefold().endswith(".zip")
+            for url in event.mimeData().urls()
+        ):
+            event.acceptProposedAction()
+            return
+        event.ignore()
+
+    def dropEvent(self, event) -> None:
+        archive_paths = [
+            url.toLocalFile()
+            for url in event.mimeData().urls()
+            if url.isLocalFile() and url.toLocalFile().casefold().endswith(".zip")
+        ]
         if not archive_paths:
+            event.ignore()
+            return
+        event.acceptProposedAction()
+        self._start_import_paths(archive_paths)
+
+    def _start_import_paths(self, archive_paths: list[str]) -> None:
+        if not archive_paths:
+            return
+        if (
+            self.scan_worker and self.scan_worker.isRunning()
+            or self.export_worker and self.export_worker.isRunning()
+            or self.migration_worker and self.migration_worker.isRunning()
+            or self.import_worker and self.import_worker.isRunning()
+        ):
+            QMessageBox.information(self, "正在处理", "当前有扫描、导出或导入任务，请完成或取消后再导入。")
             return
         self.import_button.setEnabled(False)
         self.migration_export_button.setEnabled(False)
