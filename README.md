@@ -6,7 +6,7 @@ Windows 本地桌面工具。默认读取 `%USERPROFILE%\.codex\`，也支持 `C
 
 ## 启动
 
-双击 `启动工具.bat`。脚本优先启动 `dist-v1.1.8`，然后尝试已有发行包；都不存在时会从源码启动。首次从源码启动需要 Python 3.10+ 和网络下载 PySide6、zstandard。已有发行包可在无 Python 环境的 Windows 机器运行。
+双击 `启动工具.bat`。脚本优先启动 `dist-v1.1.9`，然后尝试已有发行包；都不存在时会从源码启动。首次从源码启动需要 Python 3.10+ 和网络下载 PySide6、zstandard。已有发行包可在无 Python 环境的 Windows 机器运行。
 
 会话列表与预览并排显示。单击会话行即可查看记录；可按来源筛选本机扫描或 ZIP 导入的会话，在预览中直接查看已导入的图片附件，点击其他附件可用系统默认程序打开。除通过“导入 ZIP”按钮选择文件，也可以把迁移 ZIP 拖到程序窗口导入。悬停标题可查看 ID、工作目录、来源、归档状态等完整元数据。搜索会在输入停顿后刷新，窗口大小和列表/预览分栏位置会在下次启动时恢复。筛选时若当前会话仍符合条件，会保留选中项和预览；否则会清空旧预览，避免误看不在结果中的会话。
 
@@ -62,5 +62,5 @@ py -3 -m venv .venv
 .\.venv\Scripts\python.exe main.py
 ```
 
-运行 `构建EXE.bat` 会安装打包依赖并生成 `dist-v1.1.8\CodexHistoryViewer\CodexHistoryViewer.exe`。EXE 不是代码签名发行版，首次运行时 Windows 可能显示常规下载文件提示。
+运行 `构建EXE.bat` 会安装打包依赖并生成 `dist-v1.1.9\CodexHistoryViewer\CodexHistoryViewer.exe`。EXE 不是代码签名发行版，首次运行时 Windows 可能显示常规下载文件提示。
 

@@ -17,6 +17,7 @@ from .reader import APP_VERSION, SessionInfo
 _MAX_METADATA_BYTES = 256 * 1024 * 1024
 _MAX_BUNDLE_SESSIONS = 100_000
 _SEARCH_LIMIT = 256_000
+_WINDOWS_RESERVED_NAME = re.compile(r"(?i)^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?$")
 
 
 class DuplicateSessionError(Exception):
@@ -31,10 +32,18 @@ def _safe_relative_path(value: Any) -> str:
     if not isinstance(value, str) or not value:
         return ""
     normalized = value.replace("\\", "/")
+    raw_parts = normalized.split("/")
+    if any(part in {"", ".", ".."} for part in raw_parts):
+        return ""
+    for part in raw_parts:
+        if (
+            part.endswith((".", " "))
+            or any(ord(char) < 32 or char in '<>:"|?*' for char in part)
+            or _WINDOWS_RESERVED_NAME.fullmatch(part)
+        ):
+            return ""
     path = PurePosixPath(normalized)
     if path.is_absolute() or re.match(r"^[A-Za-z]:", normalized):
-        return ""
-    if any(part in {"", ".", ".."} for part in path.parts):
         return ""
     return path.as_posix()
 
@@ -175,11 +184,26 @@ def _import_package_archive(
     if session_id in existing_session_ids:
         raise DuplicateSessionError(str(source_data.get("title") or session_id))
     events = payload["events"]
+    for event in events:
+        for attachment in event.get("attachments", []):
+            raw_path = attachment.get("path")
+            if raw_path and not _safe_relative_path(raw_path):
+                raise ValueError(f"迁移包包含不安全的附件路径：{raw_path}")
+    expected_paths = _event_attachment_paths(payload)
+    windows_paths: dict[str, str] = {}
+    for relative in expected_paths:
+        safe_relative = _safe_relative_path(relative)
+        if not safe_relative:
+            raise ValueError(f"迁移包包含不安全的附件路径：{relative}")
+        folded = safe_relative.casefold()
+        previous = windows_paths.get(folded)
+        if previous is not None and previous != safe_relative:
+            raise ValueError(f"迁移包包含在 Windows 上重名的附件：{previous} / {safe_relative}")
+        windows_paths[folded] = safe_relative
 
     target = Path(import_root) / uuid.uuid4().hex
     target.mkdir(parents=True, exist_ok=False)
     issues: list[str] = []
-    expected_paths = _event_attachment_paths(payload)
     try:
         for relative in sorted(expected_paths):
             if cancel is not None and cancel.is_set():

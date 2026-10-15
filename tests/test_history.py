@@ -10,7 +10,7 @@ import zipfile
 from pathlib import Path
 
 from codex_history_viewer.exporter import export_migration_bundle, export_one
-from codex_history_viewer.importer import import_archives
+from codex_history_viewer.importer import _safe_relative_path, import_archives
 from codex_history_viewer.reader import scan_codex_home, load_session_events
 
 
@@ -282,6 +282,22 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual(duplicate_result["imported"], 0)
         self.assertEqual(duplicate_result["skipped"], 1)
         self.assertEqual(duplicate_result["failed"], 0)
+
+    def test_import_paths_are_safe_for_windows_targets(self) -> None:
+        for unsafe in (
+            "attachments/../outside.txt",
+            "attachments/C:/outside.txt",
+            "attachments/token.txt:secret",
+            "attachments/CON.txt",
+            "attachments/trailing-dot.",
+            "attachments/trailing-space ",
+        ):
+            with self.subTest(path=unsafe):
+                self.assertEqual(_safe_relative_path(unsafe), "")
+        self.assertEqual(
+            _safe_relative_path(r"attachments\images\sample.png"),
+            "attachments/images/sample.png",
+        )
 
 
 if __name__ == "__main__":

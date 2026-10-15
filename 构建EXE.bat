@@ -16,11 +16,11 @@ for /f "delims=" %%I in ('py -3 -c "import sys; print(sys.base_prefix)"') do set
 set "PATH=%SystemRoot%\System32;%SystemRoot%;%SystemRoot%\System32\Wbem;%PYTHON_BASE%;%APP_DIR%.venv\Scripts"
 
 pushd "%APP_DIR%"
-"%APP_DIR%.venv\Scripts\python.exe" -m PyInstaller --clean --noconfirm --windowed --name CodexHistoryViewer --distpath "%APP_DIR%dist-v1.1.8" --workpath "%APP_DIR%build-v1.1.8" --specpath "%APP_DIR%build-spec-v1.1.8" main.py
+"%APP_DIR%.venv\Scripts\python.exe" -m PyInstaller --clean --noconfirm --windowed --name CodexHistoryViewer --distpath "%APP_DIR%dist-v1.1.9" --workpath "%APP_DIR%build-v1.1.9" --specpath "%APP_DIR%build-spec-v1.1.9" main.py
 set "BUILD_EXIT=%ERRORLEVEL%"
 popd
 if not "%BUILD_EXIT%"=="0" goto build_failed
-echo Build complete: %APP_DIR%dist-v1.1.8\CodexHistoryViewer\CodexHistoryViewer.exe
+echo Build complete: %APP_DIR%dist-v1.1.9\CodexHistoryViewer\CodexHistoryViewer.exe
 pause
 exit /b 0
 
