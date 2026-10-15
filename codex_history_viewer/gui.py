@@ -391,6 +391,13 @@ class MainWindow(QMainWindow):
         self.search_edit.setClearButtonEnabled(True)
         self.search_edit.textChanged.connect(lambda *_: self._filter_timer.start())
         filter_row.addWidget(self.search_edit, 1)
+        self.source_filter = QComboBox()
+        self.source_filter.addItem("全部来源", "all")
+        self.source_filter.addItem("本机扫描", "local")
+        self.source_filter.addItem("已导入", "imported")
+        self.source_filter.setToolTip("只看当前电脑扫描到的会话，或从 ZIP 导入的会话")
+        self.source_filter.currentIndexChanged.connect(self.apply_filters)
+        filter_row.addWidget(self.source_filter)
         self.archive_filter = QComboBox()
         self.archive_filter.addItem("全部会话", "all")
         self.archive_filter.addItem("未归档", "active")
@@ -633,10 +640,14 @@ class MainWindow(QMainWindow):
             self._clear_preview()
             return
         needle = self.search_edit.text().strip().casefold()
+        source_mode = self.source_filter.currentData()
         archive_mode = self.archive_filter.currentData()
         result = []
         all_sessions = self._all_sessions()
         for session in all_sessions:
+            is_imported = session.source == "导入 ZIP"
+            if source_mode == "imported" and not is_imported or source_mode == "local" and is_imported:
+                continue
             if archive_mode == "active" and session.archived or archive_mode == "archived" and not session.archived:
                 continue
             if not self._date_matches(session):
