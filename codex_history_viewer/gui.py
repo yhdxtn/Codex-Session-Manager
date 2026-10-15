@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import html
 import shutil
 import sys
 import threading
@@ -8,8 +9,8 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QDate, QObject, QSettings, Qt, QThread, QTimer, Signal, Slot
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtCore import QDate, QObject, QSettings, Qt, QThread, QTimer, QUrl, Signal, Slot
+from PySide6.QtGui import QColor, QDesktopServices, QFont
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -31,6 +32,7 @@ from PySide6.QtWidgets import (
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -177,30 +179,68 @@ class PreviewWorker(QThread):
     def run(self) -> None:
         try:
             events, issues, _ = load_session_events(self.session, self.catalog, self.cancel_event)
-            lines = []
+            chunks = []
             for event in events:
                 kind = event.get("kind")
                 timestamp = _local_display(str(event.get("raw_timestamp", "")))
+                attachments = "".join(self._attachment_html(item) for item in event.get("attachments", []))
                 if kind == "message":
                     who = "用户" if event.get("role") == "user" else "助手"
                     phase = f"（{event.get('phase')}）" if event.get("phase") else ""
-                    lines.extend([f"[{timestamp}] {who}{phase}", str(event.get("text", "")), ""])
+                    title = f"[{timestamp}] {who}{phase}"
+                    text = html.escape(str(event.get("text", ""))).replace("\n", "<br>")
+                    chunks.append(f'<article class="message"><h3>{html.escape(title)}</h3><div>{text}</div>{attachments}</article>')
                 elif kind == "tool_call":
-                    lines.extend([f"[{timestamp}] 工具调用：{event.get('name')}  call_id={event.get('call_id') or '未找到'}", str(event.get("text", "")), ""])
+                    title = f"[{timestamp}] 工具调用：{event.get('name')}  call_id={event.get('call_id') or '未找到'}"
+                    chunks.append(f'<details><summary>{html.escape(title)}</summary><pre>{html.escape(str(event.get("text", "")))}</pre>{attachments}</details>')
                 elif kind == "tool_result":
-                    lines.extend([f"[{timestamp}] 工具结果：{event.get('name')}  call_id={event.get('call_id') or '未找到'}", str(event.get("text", "")), ""])
+                    title = f"[{timestamp}] 工具结果：{event.get('name')}  call_id={event.get('call_id') or '未找到'}"
+                    chunks.append(f'<details><summary>{html.escape(title)}</summary><pre>{html.escape(str(event.get("text", "")))}</pre>{attachments}</details>')
                 elif kind in {"status", "unknown"}:
-                    lines.extend([f"[{timestamp}] {event.get('name', '事件')}", str(event.get("text", "")), ""])
-                for attachment in event.get("attachments", []):
-                    reference = attachment.get("ref", "")
-                    lines.append(f"[附件 {attachment.get('status', '状态未知')}] {reference or '未找到'}")
+                    title = f"[{timestamp}] {event.get('name', '事件')}"
+                    chunks.append(f'<details><summary>{html.escape(title)}</summary><pre>{html.escape(str(event.get("text", "")))}</pre>{attachments}</details>')
             if issues:
-                lines.extend(["", "读取报告：", *[f"- {item}" for item in issues]])
-            if not lines:
-                lines.append("此会话尚无可预览的聊天内容。")
-            self.completed.emit(self.session.session_id, "\n".join(lines))
+                chunks.append("<section><h3>读取报告</h3><ul>" + "".join(f"<li>{html.escape(item)}</li>" for item in issues) + "</ul></section>")
+            if not chunks:
+                chunks.append("<p>此会话尚无可预览的聊天内容。</p>")
+            page = """<!doctype html><html><head><meta charset="utf-8"><style>
+body { font: 14px/1.65 'Microsoft YaHei UI', sans-serif; color: #202a29; }
+article, details, section { margin: 8px 0 14px; padding: 10px 12px; border: 1px solid #d7dfdb; border-radius: 7px; background: #fff; }
+article { border-left: 3px solid #318661; } h3 { margin: 0 0 6px; font-size: 13px; color: #687570; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f5f7f6; padding: 8px; border-radius: 4px; }
+summary { cursor: pointer; font-weight: 600; } a { color: #176e60; text-decoration: none; } a:hover { text-decoration: underline; }
+figure { margin: 8px 0 4px; }
+</style></head><body>""" + "\n".join(chunks) + "</body></html>"
+            self.completed.emit(self.session.session_id, page)
         except Exception as exc:
             self.failed.emit(f"{type(exc).__name__}: {exc}")
+
+    def _attachment_html(self, attachment: dict[str, Any]) -> str:
+        reference = str(attachment.get("ref") or "")
+        status = str(attachment.get("status") or "状态未知")
+        path_value = str(attachment.get("path") or reference)
+        if path_value.casefold().startswith("file:"):
+            path_value = QUrl(path_value).toLocalFile()
+        try:
+            path = Path(path_value).resolve(strict=True)
+            if self.session.source == "导入 ZIP" and self.session.paths:
+                allowed_root = (Path(self.session.paths[0]).resolve().parent / "attachments").resolve()
+            else:
+                allowed_root = (Path(self.catalog.root).resolve() / "attachments").resolve()
+            if not path.is_file() or os.path.commonpath((os.path.normcase(str(allowed_root)), os.path.normcase(str(path)))) != os.path.normcase(str(allowed_root)):
+                path = None
+        except (OSError, RuntimeError, ValueError):
+            path = None
+
+        label = html.escape(str(attachment.get("kind") or "附件"))
+        if path is None:
+            return f'<p class="attachment">📎 {label} · {html.escape(status)} · {html.escape(reference or "未找到")}</p>'
+
+        url = html.escape(QUrl.fromLocalFile(str(path)).toString(), quote=True)
+        filename = html.escape(path.name)
+        if path.suffix.casefold() in {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}:
+            return f'<figure class="attachment"><a href="{url}">📎 {label} · {filename}</a><br><img src="{url}" alt="{filename}" width="440"></figure>'
+        return f'<p class="attachment"><a href="{url}">📎 {label} · {filename}</a></p>'
 
 
 class ExportOptions(QDialog):
@@ -451,9 +491,10 @@ class MainWindow(QMainWindow):
         self.preview_meta.setObjectName("subtleText")
         self.preview_meta.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.preview_meta.setWordWrap(False)
-        self.preview = QPlainTextEdit()
-        self.preview.setReadOnly(True)
-        self.preview.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        self.preview = QTextBrowser()
+        self.preview.setOpenLinks(False)
+        self.preview.setOpenExternalLinks(False)
+        self.preview.anchorClicked.connect(lambda url: QDesktopServices.openUrl(url))
         self.preview.setFont(QFont("Microsoft YaHei UI", 9))
         preview_layout.addWidget(self.preview_title)
         preview_layout.addWidget(self.preview_meta)
@@ -754,7 +795,7 @@ class MainWindow(QMainWindow):
     def _preview_completed(self, session_id: str, text: str) -> None:
         if session_id != self._active_preview_id or self._pending_preview:
             return
-        self.preview.setPlainText(text)
+        self.preview.setHtml(text)
         cursor = self.preview.textCursor()
         cursor.movePosition(cursor.MoveOperation.Start)
         self.preview.setTextCursor(cursor)
@@ -1115,7 +1156,7 @@ def run() -> int:
         """
         QWidget { color: #202a29; }
         QMainWindow, QDialog { background: #f5f7f6; }
-        QLineEdit, QComboBox, QDateEdit, QPlainTextEdit, QTableWidget {
+        QLineEdit, QComboBox, QDateEdit, QPlainTextEdit, QTextBrowser, QTableWidget {
             background: #ffffff;
             border: 1px solid #d0dad6;
             border-radius: 6px;
@@ -1123,7 +1164,7 @@ def run() -> int:
             selection-background-color: #e0eee9;
             selection-color: #1e332c;
         }
-        QLineEdit:focus, QComboBox:focus, QDateEdit:focus, QPlainTextEdit:focus {
+        QLineEdit:focus, QComboBox:focus, QDateEdit:focus, QPlainTextEdit:focus, QTextBrowser:focus {
             border: 1px solid #3c806a;
         }
         QPushButton {
