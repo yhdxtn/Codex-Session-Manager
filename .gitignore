@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+/build*/
+/dist*/
+*.log
+
+# Local Codex data and migration archives
+.codex/
+attachments/
+imports/
+exports/
+*.jsonl
+*.jsonl.zst
+*.sqlite
+*.sqlite3
+*.db
+*.zip
