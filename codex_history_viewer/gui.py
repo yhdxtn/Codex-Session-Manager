@@ -1053,12 +1053,12 @@ class MainWindow(QMainWindow):
         if results:
             folder = results[0].get("folder")
             if folder and os.path.isdir(folder):
-                open_button = QMessageBox(self)
-                open_button.setWindowTitle("导出完成")
-                open_button.setText(f"导出已完成。结果保存在：\n{folder}")
-                open_button.setStandardButtons(QMessageBox.StandardButton.Ok)
-                open_button.setInformativeText("详细错误和文件哈希位于每个会话目录的 manifest.json。")
-                open_button.exec()
+                self._show_folder_message(
+                    "导出完成",
+                    f"导出已完成。结果保存在：\n{folder}",
+                    folder,
+                    "详细错误和文件哈希位于每个会话目录的 manifest.json。",
+                )
 
     @Slot(str)
     def _export_failed(self, message: str) -> None:
@@ -1072,6 +1072,18 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(0)
         self.status_label.setText("导出失败")
         QMessageBox.critical(self, "导出失败", message)
+
+    def _show_folder_message(self, title: str, message: str, folder: str, details: str = "") -> None:
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle(title)
+        dialog.setText(message)
+        if details:
+            dialog.setInformativeText(details)
+        open_button = dialog.addButton("打开所在文件夹", QMessageBox.ButtonRole.ActionRole)
+        dialog.addButton(QMessageBox.StandardButton.Close)
+        dialog.exec()
+        if dialog.clickedButton() is open_button:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(folder))
 
     @Slot(object)
     def _migration_export_completed(self, result: dict[str, Any]) -> None:
@@ -1112,11 +1124,12 @@ class MainWindow(QMainWindow):
         self.preview_meta.setText(f"已打包 {exported:,}  ·  失败 {failed:,}")
         self.preview_meta.setToolTip("")
         self.preview.setPlainText("\n".join(lines))
-        QMessageBox.information(
-            self,
+        self._show_folder_message(
             "迁移包已生成",
             f"已打包 {exported:,} 个会话。\n\n{output_path}\n\n"
             "把这个 ZIP 文件复制到另一台电脑，再用“导入 ZIP”载入。",
+            os.path.dirname(output_path),
+            "迁移包包含聊天记录和关联附件。",
         )
 
     @Slot(str)

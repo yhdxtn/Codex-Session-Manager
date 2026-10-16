@@ -5,8 +5,8 @@ set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
 set "APP_DIR=%~dp0"
 
-if exist "%APP_DIR%dist-v1.1.10\CodexHistoryViewer\CodexHistoryViewer.exe" (
-  start "" "%APP_DIR%dist-v1.1.10\CodexHistoryViewer\CodexHistoryViewer.exe"
+if exist "%APP_DIR%dist-v1.1.11\CodexHistoryViewer\CodexHistoryViewer.exe" (
+  start "" "%APP_DIR%dist-v1.1.11\CodexHistoryViewer\CodexHistoryViewer.exe"
   exit /b 0
 )
 
