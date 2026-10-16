@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
-APP_VERSION = "1.1.9"
+APP_VERSION = "1.1.10"
 SEARCH_LIMIT = 256_000
 STATUS_RECORD_TYPES = {"error", "task_started", "task_complete", "turn_aborted", "turn_interrupted", "turn_failed", "turn_cancelled", "turn_abandoned", "exec_command_begin", "exec_command_end"}
 ATTACHMENT_FOLDER_RE = re.compile(r"(?i)(?:^|[\\/])attachments[\\/](?P<id>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})[\\/]")

@@ -972,7 +972,6 @@ class MainWindow(QMainWindow):
     def _import_completed(self, result: dict[str, Any]) -> None:
         self.imported_sessions = result.get("sessions", [])
         self.sessions_by_id = {session.session_id: session for session in self._all_sessions()}
-        self.apply_filters()
         self.import_button.setEnabled(True)
         self.migration_export_button.setEnabled(True)
         self.export_button.setEnabled(True)
@@ -984,6 +983,24 @@ class MainWindow(QMainWindow):
         imported = int(result.get("imported", 0))
         skipped = int(result.get("skipped", 0))
         failed = int(result.get("failed", 0))
+        imported_ids = [
+            str(item.get("message"))
+            for item in result.get("results", [])
+            if item.get("status") == "已导入" and item.get("message")
+        ]
+        if imported:
+            self.search_edit.clear()
+            self.archive_filter.setCurrentIndex(self.archive_filter.findData("all"))
+            self.date_enabled.setChecked(False)
+            self.source_filter.setCurrentIndex(self.source_filter.findData("imported"))
+        self.apply_filters()
+        if imported_ids:
+            first_row = next(
+                (row for row, session in enumerate(self.visible_sessions) if session.session_id == imported_ids[0]),
+                -1,
+            )
+            if first_row >= 0:
+                self.table.setCurrentCell(first_row, 1)
         self.status_label.setText(f"导入结束：成功 {imported}，跳过 {skipped}，失败 {failed}")
         lines = [f"导入结束：成功 {imported}，跳过 {skipped}，失败 {failed}", ""]
         for item in result.get("results", []):
